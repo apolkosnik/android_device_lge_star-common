@@ -56,6 +56,7 @@ __BEGIN_DECLS
  */
 #define AUDIO_DEVICE_API_VERSION_0_0 HARDWARE_DEVICE_API_VERSION(0, 0)
 #define AUDIO_DEVICE_API_VERSION_1_0 HARDWARE_DEVICE_API_VERSION(1, 0)
+#define AUDIO_DEVICE_API_VERSION_2_0 HARDWARE_DEVICE_API_VERSION(2, 0)
 #define AUDIO_DEVICE_API_VERSION_CURRENT AUDIO_DEVICE_API_VERSION_1_0
 
 /**
@@ -68,6 +69,7 @@ __BEGIN_DECLS
 #define AUDIO_HARDWARE_MODULE_ID_PRIMARY "primary"
 #define AUDIO_HARDWARE_MODULE_ID_A2DP "a2dp"
 #define AUDIO_HARDWARE_MODULE_ID_USB "usb"
+#define AUDIO_HARDWARE_MODULE_ID_REMOTE_SUBMIX "r_submix"
 
 /**************************************/
 
@@ -130,6 +132,8 @@ __BEGIN_DECLS
 /* Query if surround sound recording is supported */
 #define AUDIO_PARAMETER_KEY_SSR "ssr"
 
+/* Query if a2dp  is supported */
+#define AUDIO_PARAMETER_KEY_HANDLE_A2DP_DEVICE "isA2dpDeviceSupported"
 /**************************************/
 
 /* common audio stream configuration parameters */
@@ -264,14 +268,12 @@ struct audio_stream_out {
     int (*get_render_position)(const struct audio_stream_out *stream,
                                uint32_t *dsp_frames);
 
-#ifndef ICS_AUDIO_BLOB
     /**
      * get the local time at which the next write to the audio driver will be presented.
      * The units are microseconds, where the epoch is decided by the local audio HAL.
      */
     int (*get_next_write_timestamp)(const struct audio_stream_out *stream,
                                     int64_t *timestamp);
-#endif
 
 };
 typedef struct audio_stream_out audio_stream_out_t;
@@ -307,11 +309,13 @@ typedef struct audio_stream_in audio_stream_in_t;
 /**
  * return the frame size (number of bytes per sample).
  */
-static inline size_t audio_stream_frame_size(struct audio_stream *s)
+static inline size_t audio_stream_frame_size(const struct audio_stream *s)
 {
     size_t chan_samp_sz;
     uint32_t chan_mask = s->get_channels(s);
     int format = s->get_format(s);
+    char *tmpparam;
+    int isParamEqual;
 
 
     switch (format) {
@@ -347,6 +351,12 @@ struct audio_hw_device {
      * each audio_hw_device implementation.
      *
      * Return value is a bitmask of 1 or more values of audio_devices_t
+     *
+     * NOTE: audio HAL implementations starting with
+     * AUDIO_DEVICE_API_VERSION_2_0 do not implement this function.
+     * All supported devices should be listed in audio_policy.conf
+     * file and the audio policy manager must choose the appropriate
+     * audio module based on information in this file.
      */
     uint32_t (*get_supported_devices)(const struct audio_hw_device *dev);
 
@@ -450,6 +460,23 @@ int (*dummy2)();
 
     /** This method dumps the state of the audio hardware */
     int (*dump)(const struct audio_hw_device *dev, int fd);
+
+#ifndef ICS_AUDIO_BLOB
+    /**
+     * set the audio mute status for all audio activities.  If any value other
+     * than 0 is returned, the software mixer will emulate this capability.
+     */
+    int (*set_master_mute)(struct audio_hw_device *dev, bool mute);
+
+    /**
+     * Get the current master mute status for the HAL, if the HAL supports
+     * master mute control.  AudioFlinger will query this value from the primary
+     * audio HAL when the service starts and use the value for setting the
+     * initial master mute across all HALs.  HALs which do not support this
+     * method may leave it set to NULL.
+     */
+    int (*get_master_mute)(struct audio_hw_device *dev, bool *mute);
+#endif
 };
 typedef struct audio_hw_device audio_hw_device_t;
 
